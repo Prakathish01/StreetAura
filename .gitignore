@@ -2,7 +2,6 @@
 .env.*
 !/.env.example
 
-js/firebase-env.js
 
 node_modules/
 dist/
