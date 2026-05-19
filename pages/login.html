@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreetAura - Sign In</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-env.js"></script>
+  <script src="../js/firebase-config.js"></script>
+</head>
+<body>
+  <main class="login-page">
+    <section class="login-card">
+      <div class="login-logo">Street<span>Aura</span></div>
+      <div class="login-tagline">Curated fashion, delivered with care.</div>
+      <div id="alertBox"></div>
+      <div class="login-form">
+        <div class="form-group">
+          <label class="form-label" for="emailInput">Email</label>
+          <input type="email" class="form-input" id="emailInput" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="passwordInput">Password</label>
+          <input type="password" class="form-input" id="passwordInput" placeholder="Minimum 6 characters" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary" id="emailSignIn">Sign In</button>
+        <button class="btn btn-outline" id="emailSignUp">Create Account</button>
+        <button class="login-link-btn" id="resetPassword">Forgot password?</button>
+      </div>
+      <div class="login-divider">or</div>
+      <button class="btn-google" id="googleSignIn">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="">
+        Continue with Google
+      </button>
+      <div class="login-divider">Secure Firebase authentication</div>
+    </section>
+  </main>
+
+  <script>
+    auth.onAuthStateChanged(user => {
+      if (!user) return;
+      window.location.href = isAdmin(user.email) ? "admin.html" : "shop.html";
+    });
+
+    const alertBox = document.getElementById("alertBox");
+    const emailInput = document.getElementById("emailInput");
+    const passwordInput = document.getElementById("passwordInput");
+    const authButtons = [
+      document.getElementById("emailSignIn"),
+      document.getElementById("emailSignUp"),
+      document.getElementById("resetPassword"),
+      document.getElementById("googleSignIn")
+    ];
+
+    function setAuthLoading(isLoading) {
+      authButtons.forEach(button => button.disabled = isLoading);
+    }
+
+    function showMessage(message, type = "error") {
+      alertBox.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    }
+
+    function getEmailPassword() {
+      return {
+        email: emailInput.value.trim(),
+        password: passwordInput.value
+      };
+    }
+
+    async function saveUserProfile(user) {
+      await db.collection("users").doc(user.uid).set({
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || "",
+        photoURL: user.photoURL || "",
+        role: isAdmin(user.email) ? "admin" : "user",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    function redirectUser(user) {
+      window.location.href = isAdmin(user.email) ? "admin.html" : "shop.html";
+    }
+
+    document.getElementById("emailSignIn").addEventListener("click", async () => {
+      const { email, password } = getEmailPassword();
+      if (!email || !password) {
+        showMessage("Enter your email and password.");
+        return;
+      }
+
+      setAuthLoading(true);
+      alertBox.innerHTML = "";
+
+      try {
+        const result = await auth.signInWithEmailAndPassword(email, password);
+        await saveUserProfile(result.user);
+        redirectUser(result.user);
+      } catch (err) {
+        showMessage(err.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    });
+
+    document.getElementById("emailSignUp").addEventListener("click", async () => {
+      const { email, password } = getEmailPassword();
+      if (!email || !password) {
+        showMessage("Enter your email and password.");
+        return;
+      }
+
+      if (password.length < 6) {
+        showMessage("Password must be at least 6 characters.");
+        return;
+      }
+
+      setAuthLoading(true);
+      alertBox.innerHTML = "";
+
+      try {
+        const result = await auth.createUserWithEmailAndPassword(email, password);
+        await saveUserProfile(result.user);
+        redirectUser(result.user);
+      } catch (err) {
+        showMessage(err.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    });
+
+    document.getElementById("resetPassword").addEventListener("click", async () => {
+      const email = emailInput.value.trim();
+      if (!email) {
+        showMessage("Enter your email first, then request a password reset.");
+        return;
+      }
+
+      setAuthLoading(true);
+      alertBox.innerHTML = "";
+
+      try {
+        await auth.sendPasswordResetEmail(email);
+        showMessage("Password reset email sent. Check your inbox.", "success");
+      } catch (err) {
+        showMessage(err.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    });
+
+    document.getElementById("googleSignIn").addEventListener("click", async () => {
+      setAuthLoading(true);
+      alertBox.innerHTML = "";
+
+      try {
+        const result = await auth.signInWithPopup(googleProvider);
+        await saveUserProfile(result.user);
+        redirectUser(result.user);
+      } catch (err) {
+        showMessage(err.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    });
+  </script>
+</body>
+</html>

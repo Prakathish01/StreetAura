@@ -1,0 +1,86 @@
+@media (max-width: 900px) {
+  .navbar {
+    height: auto;
+    min-height: var(--nav-h);
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 14px 20px;
+  }
+
+  .nav-links,
+  .nav-right {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .cat-bar {
+    padding: 12px 20px;
+  }
+
+  .shop-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  .page-header {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-wrapper {
+    width: min(100% - 28px, 1320px);
+    padding-top: 20px;
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .product-info {
+    padding: 12px;
+  }
+
+  .product-bottom,
+  .payment-steps,
+  #panel3 > div {
+    grid-template-columns: 1fr !important;
+  }
+
+  .product-bottom {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .btn,
+  .btn-google,
+  .btn-logout,
+  .nav-icon-btn,
+  .clear-filters-btn,
+  .btn-atc {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .nav-right .btn-logout,
+  .nav-right .nav-icon-btn {
+    width: auto;
+  }
+
+  .modal {
+    padding: 24px;
+  }
+
+  .payment-steps {
+    display: grid;
+  }
+
+  .data-table {
+    min-width: 680px;
+  }
+}

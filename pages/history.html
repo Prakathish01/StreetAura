@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreetAura - My Orders</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-env.js"></script>
+  <script src="../js/firebase-config.js"></script>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+<nav class="navbar">
+  <a href="shop.html" class="logo">Street<span>Aura</span></a>
+  <div class="nav-links">
+    <a href="shop.html">Shop</a>
+    <a href="history.html" class="active">My Orders</a>
+  </div>
+  <div class="nav-right">
+    <span class="user-email" id="userEmail"></span>
+    <button class="btn-logout" id="logoutBtn">Sign Out</button>
+  </div>
+</nav>
+
+<main class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>My Orders</h1>
+      <div class="page-sub">View your purchase history and bills.</div>
+    </div>
+  </div>
+  <div id="ordersContainer"><div class="spinner"></div></div>
+</main>
+
+<div class="modal-overlay" id="billModal">
+  <div class="modal">
+    <button class="modal-close" id="closeBill">x</button>
+    <div id="billContent"></div>
+    <div style="text-align:center;margin-top:20px">
+      <button class="btn btn-outline btn-sm" onclick="window.print()">Print Bill</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+
+const formatPrice = value => "Rs. " + Number(value || 0).toLocaleString("en-IN");
+const safe = value => String(value ?? "");
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  if (isAdmin(user.email)) {
+    window.location.href = "admin.html";
+    return;
+  }
+
+  currentUser = user;
+  document.getElementById("userEmail").textContent = user.email;
+  await loadOrders();
+  document.getElementById("loadingOverlay").style.display = "none";
+});
+
+async function loadOrders() {
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).collection("orders").orderBy("createdAt", "desc").get();
+    const container = document.getElementById("ordersContainer");
+
+    if (snap.empty) {
+      container.innerHTML = `
+        <div class="no-results">
+          <div style="font-size:20px;font-weight:800;margin-bottom:6px">No orders yet</div>
+          <div>Start shopping and your bills will appear here.</div>
+          <a href="shop.html" class="btn btn-primary" style="margin-top:16px">Start Shopping</a>
+        </div>
+      `;
+      return;
+    }
+
+    window._orders = {};
+    snap.docs.forEach(doc => window._orders[doc.id] = doc.data());
+
+    container.innerHTML = snap.docs.map(doc => {
+      const order = doc.data();
+      const date = order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+      const items = Array.isArray(order.items) ? order.items : [];
+      return `
+        <article class="order-card">
+          <div class="order-header">
+            <div>
+              <div style="font-weight:800">${safe(order.orderId || doc.id)}</div>
+              <div class="order-id">${date} / ${items.length} item${items.length === 1 ? "" : "s"}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="badge badge-paid">${safe(order.status || "paid")}</span>
+              <button class="btn btn-outline btn-sm" onclick="showBill('${doc.id}')">View Bill</button>
+            </div>
+          </div>
+          <div class="order-body">
+            <div class="order-items">
+              ${items.map(item => `<div class="order-item-row"><span>${safe(item.name)} x ${item.qty}${item.size ? " (" + safe(item.size) + ")" : ""}</span><span>${formatPrice(Number(item.price || 0) * Number(item.qty || 0))}</span></div>`).join("")}
+            </div>
+            <div class="order-total"><span>Total Paid</span><span>${formatPrice(order.total)}</span></div>
+            <div class="order-meta">Shipped to: ${safe(order.shipping?.name)}, ${safe(order.shipping?.city)} / Payment: ${safe(order.payment?.detail)}</div>
+          </div>
+        </article>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error(err);
+    document.getElementById("ordersContainer").innerHTML = '<div class="alert alert-error">Failed to load orders.</div>';
+  }
+}
+
+function showBill(orderId) {
+  const order = window._orders[orderId];
+  if (!order) return;
+
+  const date = order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-";
+  const items = Array.isArray(order.items) ? order.items : [];
+
+  document.getElementById("billContent").innerHTML = `
+    <div class="receipt">
+      <div class="receipt-logo">Street<span>Aura</span></div>
+      <div class="receipt-meta">Chennai - 600001<br>support@threadandco.com</div>
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span><strong>Order ID</strong></span><span>${safe(order.orderId || orderId)}</span></div>
+      <div class="receipt-row"><span><strong>Date</strong></span><span>${date}</span></div>
+      <div class="receipt-row"><span><strong>Customer</strong></span><span>${safe(order.shipping?.name)}</span></div>
+      <div class="receipt-row"><span><strong>Email</strong></span><span>${safe(order.userEmail)}</span></div>
+      <hr class="receipt-divider">
+      <div class="receipt-row" style="font-weight:800"><span>Item</span><span>Amount</span></div>
+      ${items.map(item => `<div class="receipt-row"><span>${safe(item.name)}${item.size ? " (" + safe(item.size) + ")" : ""}<br><small style="color:var(--muted)">Qty: ${item.qty} x ${formatPrice(item.price)}</small></span><span>${formatPrice(Number(item.price || 0) * Number(item.qty || 0))}</span></div>`).join("")}
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span>Subtotal</span><span>${formatPrice(order.subtotal)}</span></div>
+      <div class="receipt-row"><span>Delivery</span><span>${Number(order.delivery || 0) === 0 ? "Free" : formatPrice(order.delivery)}</span></div>
+      <div class="receipt-total-row"><span>Total</span><span>${formatPrice(order.total)}</span></div>
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span>Payment Method</span><span>${safe(order.payment?.detail)}</span></div>
+      <div class="receipt-row"><span>Transaction ID</span><span>${safe(order.payment?.transactionId || "-")}</span></div>
+      <div class="receipt-row"><span>Status</span><span style="color:var(--success);font-weight:800">${safe(order.status || "paid")}</span></div>
+      <hr class="receipt-divider">
+      <div style="font-size:12px;color:var(--muted)"><strong>Shipped to:</strong><br>${safe(order.shipping?.name)}<br>${safe(order.shipping?.address)}<br>${safe(order.shipping?.city)}, ${safe(order.shipping?.state)} - ${safe(order.shipping?.pincode)}<br>${safe(order.shipping?.phone)}</div>
+      <div class="receipt-footer">Thank you for shopping with StreetAura.</div>
+    </div>
+  `;
+  document.getElementById("billModal").classList.add("open");
+}
+
+document.getElementById("closeBill").addEventListener("click", () => document.getElementById("billModal").classList.remove("open"));
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await auth.signOut();
+  window.location.href = "login.html";
+});
+</script>
+</body>
+</html>

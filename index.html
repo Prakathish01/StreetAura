@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreetAura</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-env.js"></script>
+  <script src="js/firebase-config.js"></script>
+</head>
+<body>
+  <div class="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    auth.onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = "pages/login.html";
+        return;
+      }
+
+      window.location.href = isAdmin(user.email) ? "pages/admin.html" : "pages/shop.html";
+    });
+  </script>
+</body>
+</html>

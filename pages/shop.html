@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreetAura - Shop</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-env.js"></script>
+  <script src="../js/firebase-config.js"></script>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+<nav class="navbar">
+  <div class="logo">Street<span>Aura</span></div>
+  <div class="nav-links">
+    <a href="shop.html" class="active">Shop</a>
+    <a href="history.html">My Orders</a>
+  </div>
+  <div class="nav-right">
+    <span class="user-email" id="userEmail"></span>
+    <button class="nav-icon-btn" id="cartBtn">Cart <span class="cart-count" id="cartCount">0</span></button>
+    <button class="btn-logout" id="logoutBtn">Sign Out</button>
+  </div>
+</nav>
+
+<div class="cat-bar" id="catBar">
+  <button class="cat-btn active" data-cat="all">All</button>
+</div>
+
+<main class="page-wrapper">
+  <div class="shop-layout">
+    <aside class="sidebar">
+      <div class="filter-panel-header">
+        <div class="filter-panel-title">Filters</div>
+        <button class="clear-filters-btn" id="clearFiltersBtn">Reset</button>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Search</div>
+        <input type="text" class="search-box" id="searchInput" placeholder="Find products">
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Price Range</div>
+        <div class="price-range">
+          <input type="range" id="priceFilter" min="0" max="10000" value="10000" step="100">
+          <div class="price-display">
+            <span>Rs. 0</span>
+            <span id="priceVal">Rs. 10,000</span>
+          </div>
+        </div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Size</div>
+        <div id="sizeFilterContainer"></div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Color</div>
+        <div id="colorFilterContainer"></div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Material</div>
+        <div id="materialFilterContainer"></div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Offer</div>
+        <label class="filter-option">
+          <input type="checkbox" name="discount" value="on-sale" id="discountFilter">
+          <span>On Sale</span>
+        </label>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Rating</div>
+        <div id="ratingFilterContainer"></div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Sort By</div>
+        <select class="form-select" id="sortSelect">
+          <option value="default">Recommended</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="name-asc">Name: A to Z</option>
+          <option value="newest">Newest First</option>
+        </select>
+      </div>
+    </aside>
+
+    <section>
+      <div class="filter-chips" id="filterChips" style="margin-bottom:16px"></div>
+      <div id="resultsInfo" style="font-size:14px;color:var(--muted);margin-bottom:18px;font-weight:700"></div>
+      <div class="product-grid" id="productGrid">
+        <div class="spinner" style="grid-column:1/-1"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="overlay-bg" id="overlayBg"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="cart-header">
+    <h3>Your Cart</h3>
+    <button class="modal-close" id="closeCart">x</button>
+  </div>
+  <div class="cart-body" id="cartBody"></div>
+  <div class="cart-footer" id="cartFooter" style="display:none">
+    <div class="cart-total">
+      <span>Total</span>
+      <span id="cartTotal">Rs. 0</span>
+    </div>
+    <button class="btn btn-primary" style="width:100%" id="checkoutBtn">Proceed to Checkout</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="productModal">
+  <div class="modal modal-lg" id="productModalContent">
+    <button class="modal-close" id="closeProductModal">x</button>
+    <div id="productDetailInner"></div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+let allProducts = [];
+let cartItems = {};
+let activeCategory = "all";
+
+const filterState = {
+  search: "",
+  maxPrice: 10000,
+  sizes: [],
+  colors: [],
+  materials: [],
+  onSale: false,
+  minRating: 0,
+  sort: "default"
+};
+
+const formatPrice = value => "Rs. " + Number(value || 0).toLocaleString("en-IN");
+const safe = value => String(value ?? "");
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  if (isAdmin(user.email)) {
+    window.location.href = "admin.html";
+    return;
+  }
+
+  currentUser = user;
+  document.getElementById("userEmail").textContent = user.email;
+  await loadCart();
+  await loadProducts();
+  document.getElementById("loadingOverlay").style.display = "none";
+});
+
+async function loadProducts() {
+  try {
+    const snap = await db.collection("products").get();
+    allProducts = [];
+    const cats = new Set(["all"]);
+
+    snap.forEach(doc => {
+      const product = { id: doc.id, status: "active", ...doc.data() };
+      if (product.status !== "active") return;
+      allProducts.push(product);
+      if (product.category) cats.add(product.category);
+    });
+
+    buildCategoryBar(cats);
+    buildFilterOptions();
+    renderProducts();
+  } catch (err) {
+    console.error(err);
+    document.getElementById("productGrid").innerHTML = '<p class="no-results" style="grid-column:1/-1">Failed to load products.</p>';
+  }
+}
+
+function buildCategoryBar(cats) {
+  const bar = document.getElementById("catBar");
+  bar.innerHTML = "";
+
+  Array.from(cats).forEach(category => {
+    const btn = document.createElement("button");
+    btn.className = "cat-btn" + (category === activeCategory ? " active" : "");
+    btn.dataset.cat = category;
+    btn.textContent = category === "all" ? "All" : category;
+    btn.addEventListener("click", () => {
+      activeCategory = category;
+      document.querySelectorAll(".cat-btn").forEach(item => item.classList.remove("active"));
+      btn.classList.add("active");
+      renderProducts();
+    });
+    bar.appendChild(btn);
+  });
+}
+
+function buildFilterOptions() {
+  const sizes = new Set();
+  const colors = new Set();
+  const materials = new Set();
+
+  allProducts.forEach(product => {
+    if (Array.isArray(product.sizes)) product.sizes.forEach(size => sizes.add(size));
+    if (product.color) colors.add(product.color);
+    if (product.material) materials.add(product.material);
+  });
+
+  buildFilterCheckboxes("sizeFilterContainer", Array.from(sizes).sort(), "sizes");
+  buildFilterCheckboxes("colorFilterContainer", Array.from(colors).sort(), "colors");
+  buildFilterCheckboxes("materialFilterContainer", Array.from(materials).sort(), "materials");
+  buildRatingFilter();
+}
+
+function buildFilterCheckboxes(containerId, options, filterKey) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = options.length ? "" : '<div style="color:var(--muted);font-size:13px">No options</div>';
+
+  options.forEach(option => {
+    const label = document.createElement("label");
+    label.className = "filter-option";
+    label.innerHTML = `<input type="checkbox" data-filter="${filterKey}" value="${safe(option)}"><span>${safe(option)}</span>`;
+    container.appendChild(label);
+    label.querySelector("input").addEventListener("change", event => {
+      if (event.target.checked) {
+        filterState[filterKey].push(option);
+      } else {
+        filterState[filterKey] = filterState[filterKey].filter(item => item !== option);
+      }
+      renderProducts();
+      updateFilterChips();
+    });
+  });
+}
+
+function buildRatingFilter() {
+  const container = document.getElementById("ratingFilterContainer");
+  container.innerHTML = "";
+
+  [4, 3].forEach(rating => {
+    const label = document.createElement("label");
+    label.className = "filter-option";
+    label.innerHTML = `<input type="radio" name="rating" value="${rating}"><span>${"*".repeat(rating)} and up</span>`;
+    container.appendChild(label);
+    label.querySelector("input").addEventListener("change", () => {
+      filterState.minRating = rating;
+      renderProducts();
+      updateFilterChips();
+    });
+  });
+}
+
+function updateFilterChips() {
+  const chips = [];
+
+  if (filterState.maxPrice < 10000) chips.push({ type: "price", label: `Price: Rs. 0-${filterState.maxPrice}` });
+  filterState.sizes.forEach(value => chips.push({ type: "sizes", value, label: `Size: ${value}` }));
+  filterState.colors.forEach(value => chips.push({ type: "colors", value, label: `Color: ${value}` }));
+  filterState.materials.forEach(value => chips.push({ type: "materials", value, label: `Material: ${value}` }));
+  if (filterState.onSale) chips.push({ type: "sale", label: "On Sale" });
+  if (filterState.minRating) chips.push({ type: "rating", label: `Rating: ${filterState.minRating}+` });
+
+  const chipsContainer = document.getElementById("filterChips");
+  chipsContainer.innerHTML = chips.map((chip, index) => `<div class="chip">${chip.label}<span class="chip-close" data-index="${index}">x</span></div>`).join("");
+  chipsContainer.querySelectorAll(".chip-close").forEach(close => {
+    close.addEventListener("click", () => clearSpecificFilter(chips[Number(close.dataset.index)]));
+  });
+}
+
+function clearSpecificFilter(chip) {
+  if (chip.type === "price") {
+    filterState.maxPrice = 10000;
+    document.getElementById("priceFilter").value = 10000;
+    document.getElementById("priceVal").textContent = "Rs. 10,000";
+  } else if (["sizes", "colors", "materials"].includes(chip.type)) {
+    filterState[chip.type] = filterState[chip.type].filter(value => value !== chip.value);
+    document.querySelectorAll(`input[data-filter="${chip.type}"][value="${CSS.escape(chip.value)}"]`).forEach(input => input.checked = false);
+  } else if (chip.type === "sale") {
+    filterState.onSale = false;
+    document.getElementById("discountFilter").checked = false;
+  } else if (chip.type === "rating") {
+    filterState.minRating = 0;
+    document.querySelectorAll('input[name="rating"]').forEach(input => input.checked = false);
+  }
+
+  renderProducts();
+  updateFilterChips();
+}
+
+document.getElementById("clearFiltersBtn").addEventListener("click", () => {
+  Object.assign(filterState, {
+    search: "",
+    maxPrice: 10000,
+    sizes: [],
+    colors: [],
+    materials: [],
+    onSale: false,
+    minRating: 0,
+    sort: "default"
+  });
+
+  document.getElementById("searchInput").value = "";
+  document.getElementById("priceFilter").value = 10000;
+  document.getElementById("priceVal").textContent = "Rs. 10,000";
+  document.getElementById("sortSelect").value = "default";
+  document.getElementById("discountFilter").checked = false;
+  document.querySelectorAll('input[type="checkbox"]').forEach(input => input.checked = false);
+  document.querySelectorAll('input[name="rating"]').forEach(input => input.checked = false);
+  renderProducts();
+  updateFilterChips();
+});
+
+function getFilteredProducts() {
+  const search = filterState.search.toLowerCase();
+  const list = allProducts.filter(product => {
+    const price = Number(product.price || 0);
+    const name = safe(product.name).toLowerCase();
+    const description = safe(product.description).toLowerCase();
+    const matchCat = activeCategory === "all" || product.category === activeCategory;
+    const matchSearch = !search || name.includes(search) || description.includes(search);
+    const matchPrice = price <= filterState.maxPrice;
+    const matchSize = filterState.sizes.length === 0 || (Array.isArray(product.sizes) && filterState.sizes.some(size => product.sizes.includes(size)));
+    const matchColor = filterState.colors.length === 0 || filterState.colors.includes(product.color);
+    const matchMaterial = filterState.materials.length === 0 || filterState.materials.includes(product.material);
+    const matchSale = !filterState.onSale || Number(product.discount || 0) > 0;
+    const matchRating = !filterState.minRating || Number(product.rating || 0) >= filterState.minRating;
+    return matchCat && matchSearch && matchPrice && matchSize && matchColor && matchMaterial && matchSale && matchRating;
+  });
+
+  if (filterState.sort === "price-asc") list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+  if (filterState.sort === "price-desc") list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  if (filterState.sort === "name-asc") list.sort((a, b) => safe(a.name).localeCompare(safe(b.name)));
+  if (filterState.sort === "newest") list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  return list;
+}
+
+function renderProducts() {
+  const list = getFilteredProducts();
+  const grid = document.getElementById("productGrid");
+  document.getElementById("resultsInfo").textContent = `${list.length} product${list.length === 1 ? "" : "s"} found`;
+
+  if (!list.length) {
+    grid.innerHTML = '<p class="no-results" style="grid-column:1/-1">No products match your filters.</p>';
+    return;
+  }
+
+  grid.innerHTML = list.map(product => `
+    <article class="product-card" data-id="${product.id}">
+      <div class="product-card-img-wrapper">
+        ${product.imageUrl ? `<img class="product-img" src="${product.imageUrl}" alt="${safe(product.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ""}
+        <div class="product-img-placeholder" style="display:${product.imageUrl ? "none" : "flex"}">TC</div>
+        ${Number(product.discount || 0) > 0 ? `<div class="product-badge">-${product.discount}%</div>` : ""}
+      </div>
+      <div class="product-info">
+        ${product.category ? `<div class="product-category">${safe(product.category)}</div>` : ""}
+        <div class="product-name">${safe(product.name)}</div>
+        ${product.rating ? `<div class="product-rating"><span class="stars">${"*".repeat(Math.floor(product.rating))}</span> <span class="count">(${product.reviews || 0})</span></div>` : ""}
+        <div class="product-bottom">
+          <div class="product-price">${formatPrice(product.price)}</div>
+          <button class="btn-atc" data-id="${product.id}">Add</button>
+        </div>
+      </div>
+    </article>
+  `).join("");
+
+  grid.querySelectorAll(".product-card").forEach(card => {
+    card.addEventListener("click", event => {
+      if (event.target.classList.contains("btn-atc")) return;
+      openProductModal(card.dataset.id);
+    });
+  });
+
+  grid.querySelectorAll(".btn-atc").forEach(btn => {
+    btn.addEventListener("click", event => {
+      event.stopPropagation();
+      quickAddToCart(btn.dataset.id);
+    });
+  });
+}
+
+function openProductModal(id) {
+  const product = allProducts.find(item => item.id === id);
+  if (!product) return;
+
+  const sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : ["XS", "S", "M", "L", "XL"];
+  document.getElementById("productDetailInner").innerHTML = `
+    <div style="display:flex;gap:28px;flex-wrap:wrap">
+      <div style="flex:0 0 300px">
+        ${product.imageUrl ? `<img src="${product.imageUrl}" alt="${safe(product.name)}" style="width:100%;border-radius:8px;object-fit:cover;max-height:420px">` : `<div class="product-img-placeholder" style="height:420px;border-radius:8px">TC</div>`}
+      </div>
+      <div style="flex:1;min-width:240px">
+        <div class="product-category">${safe(product.category || "Product")}</div>
+        <h2 style="font-size:26px;margin:8px 0 10px">${safe(product.name)}</h2>
+        <div class="product-price" style="font-size:24px;margin-bottom:10px">${formatPrice(product.price)}</div>
+        ${product.rating ? `<div class="product-rating" style="margin-bottom:12px"><span class="stars">${"*".repeat(Math.floor(product.rating))}</span> ${product.rating} (${product.reviews || 0} reviews)</div>` : ""}
+        <p style="color:var(--muted);margin-bottom:16px">${safe(product.description || "Premium clothing selected for everyday comfort and style.")}</p>
+        ${product.material ? `<div style="margin-bottom:8px"><strong>Material:</strong> ${safe(product.material)}</div>` : ""}
+        ${product.color ? `<div style="margin-bottom:14px"><strong>Color:</strong> ${safe(product.color)}</div>` : ""}
+        <div class="size-selector">
+          <div class="filter-title">Select Size</div>
+          <div class="size-opts">${sizes.map(size => `<div class="size-opt" data-size="${safe(size)}">${safe(size)}</div>`).join("")}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:18px">
+          <div class="qty-control">
+            <button class="qty-btn" id="modalQtyMinus">-</button>
+            <span class="qty-val" id="modalQty">1</span>
+            <button class="qty-btn" id="modalQtyPlus">+</button>
+          </div>
+          <button class="btn btn-primary" id="modalAddToCart" style="flex:1">Add to Cart</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let selectedSize = sizes[0] || null;
+  let qty = 1;
+  const firstSize = document.querySelector(".size-opt");
+  if (firstSize) firstSize.classList.add("selected");
+
+  document.querySelectorAll(".size-opt").forEach(opt => {
+    opt.addEventListener("click", () => {
+      document.querySelectorAll(".size-opt").forEach(item => item.classList.remove("selected"));
+      opt.classList.add("selected");
+      selectedSize = opt.dataset.size;
+    });
+  });
+
+  document.getElementById("modalQtyMinus").addEventListener("click", () => {
+    if (qty > 1) qty -= 1;
+    document.getElementById("modalQty").textContent = qty;
+  });
+
+  document.getElementById("modalQtyPlus").addEventListener("click", () => {
+    qty += 1;
+    document.getElementById("modalQty").textContent = qty;
+  });
+
+  document.getElementById("modalAddToCart").addEventListener("click", () => {
+    addToCart(product.id, qty, selectedSize);
+    document.getElementById("productModal").classList.remove("open");
+  });
+
+  document.getElementById("productModal").classList.add("open");
+}
+
+document.getElementById("closeProductModal").addEventListener("click", () => document.getElementById("productModal").classList.remove("open"));
+document.getElementById("productModal").addEventListener("click", event => {
+  if (event.target === document.getElementById("productModal")) document.getElementById("productModal").classList.remove("open");
+});
+
+async function loadCart() {
+  try {
+    const snap = await db.collection("users").doc(currentUser.uid).collection("cart").get();
+    cartItems = {};
+    snap.forEach(doc => cartItems[doc.id] = doc.data());
+    updateCartUI();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function quickAddToCart(id) {
+  addToCart(id, 1, null);
+}
+
+async function addToCart(productId, qty, size) {
+  const product = allProducts.find(item => item.id === productId);
+  if (!product) return;
+
+  if (cartItems[productId]) {
+    cartItems[productId].qty += qty;
+    if (size) cartItems[productId].size = size;
+  } else {
+    cartItems[productId] = {
+      productId,
+      name: product.name,
+      price: Number(product.price || 0),
+      imageUrl: product.imageUrl || "",
+      size,
+      qty
+    };
+  }
+
+  await db.collection("users").doc(currentUser.uid).collection("cart").doc(productId).set(cartItems[productId]);
+  updateCartUI();
+  showToast("Added to cart");
+}
+
+async function removeFromCart(productId) {
+  delete cartItems[productId];
+  await db.collection("users").doc(currentUser.uid).collection("cart").doc(productId).delete();
+  updateCartUI();
+}
+
+async function updateQty(productId, delta) {
+  if (!cartItems[productId]) return;
+  cartItems[productId].qty += delta;
+  if (cartItems[productId].qty <= 0) {
+    await removeFromCart(productId);
+    return;
+  }
+  await db.collection("users").doc(currentUser.uid).collection("cart").doc(productId).set(cartItems[productId]);
+  updateCartUI();
+}
+
+function updateCartUI() {
+  const items = Object.values(cartItems);
+  const count = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const total = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+
+  document.getElementById("cartCount").textContent = count;
+  document.getElementById("cartTotal").textContent = formatPrice(total);
+  document.getElementById("cartFooter").style.display = items.length ? "block" : "none";
+
+  const body = document.getElementById("cartBody");
+  if (!items.length) {
+    body.innerHTML = '<div class="cart-empty">Your cart is empty.<br><br>Add a product to continue.</div>';
+    return;
+  }
+
+  body.innerHTML = items.map(item => `
+    <div class="cart-item">
+      ${item.imageUrl ? `<img class="cart-item-img" src="${item.imageUrl}" alt="${safe(item.name)}">` : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-weight:800">TC</div>`}
+      <div class="cart-item-details">
+        <div class="cart-item-name">${safe(item.name)}</div>
+        <div class="cart-item-price">${formatPrice(item.price)}${item.size ? " / " + safe(item.size) : ""}</div>
+        <div class="qty-control">
+          <button class="qty-btn" onclick="updateQty('${item.productId}', -1)">-</button>
+          <span class="qty-val">${item.qty}</span>
+          <button class="qty-btn" onclick="updateQty('${item.productId}', 1)">+</button>
+        </div>
+      </div>
+      <button class="remove-item" onclick="removeFromCart('${item.productId}')">x</button>
+    </div>
+  `).join("");
+}
+
+document.getElementById("cartBtn").addEventListener("click", () => {
+  document.getElementById("cartDrawer").classList.add("open");
+  document.getElementById("overlayBg").classList.add("open");
+});
+
+function closeCart() {
+  document.getElementById("cartDrawer").classList.remove("open");
+  document.getElementById("overlayBg").classList.remove("open");
+}
+
+document.getElementById("closeCart").addEventListener("click", closeCart);
+document.getElementById("overlayBg").addEventListener("click", closeCart);
+
+document.getElementById("checkoutBtn").addEventListener("click", () => {
+  if (!Object.keys(cartItems).length) return;
+  sessionStorage.setItem("checkoutCart", JSON.stringify(cartItems));
+  window.location.href = "checkout.html";
+});
+
+document.getElementById("searchInput").addEventListener("input", event => {
+  filterState.search = event.target.value;
+  renderProducts();
+  updateFilterChips();
+});
+
+document.getElementById("sortSelect").addEventListener("change", event => {
+  filterState.sort = event.target.value;
+  renderProducts();
+});
+
+document.getElementById("priceFilter").addEventListener("input", event => {
+  filterState.maxPrice = Number(event.target.value);
+  document.getElementById("priceVal").textContent = formatPrice(event.target.value);
+  renderProducts();
+  updateFilterChips();
+});
+
+document.getElementById("discountFilter").addEventListener("change", event => {
+  filterState.onSale = event.target.checked;
+  renderProducts();
+  updateFilterChips();
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await auth.signOut();
+  window.location.href = "login.html";
+});
+
+function showToast(message) {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.style.cssText = "position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:12px 18px;border-radius:8px;font-weight:700;z-index:9999;opacity:0;transition:opacity .2s;box-shadow:0 14px 38px rgba(17,24,39,.18)";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.opacity = "1";
+  setTimeout(() => toast.style.opacity = "0", 1800);
+}
+</script>
+</body>
+</html>

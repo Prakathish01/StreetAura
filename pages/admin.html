@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreetAura - Admin</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-env.js"></script>
+  <script src="../js/firebase-config.js"></script>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+<nav class="navbar">
+  <div class="logo">Street<span>Aura</span> <span style="font-size:12px;color:var(--muted);font-weight:700">Admin</span></div>
+  <div class="nav-right">
+    <span class="user-email" id="userEmail"></span>
+    <button class="btn-logout" id="logoutBtn">Sign Out</button>
+  </div>
+</nav>
+
+<main class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>Admin Dashboard</h1>
+      <div class="page-sub">Manage products, orders, and customer records.</div>
+    </div>
+    <button class="btn btn-primary" id="addProductBtn">Add Product</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px">
+    <div class="admin-panel active" style="display:block"><div style="color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase">Products</div><div style="font-size:28px;font-weight:800" id="statProducts">0</div></div>
+    <div class="admin-panel active" style="display:block"><div style="color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase">Orders</div><div style="font-size:28px;font-weight:800" id="statOrders">0</div></div>
+    <div class="admin-panel active" style="display:block"><div style="color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase">Revenue</div><div style="font-size:28px;font-weight:800" id="statRevenue">Rs. 0</div></div>
+    <div class="admin-panel active" style="display:block"><div style="color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase">Users</div><div style="font-size:28px;font-weight:800" id="statUsers">0</div></div>
+  </div>
+
+  <div class="admin-tabs">
+    <div class="admin-tab active" data-tab="products">Products</div>
+    <div class="admin-tab" data-tab="orders">Orders</div>
+    <div class="admin-tab" data-tab="users">Users</div>
+  </div>
+
+  <section class="admin-panel active" id="tab-products">
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="text" class="search-box" id="productSearch" placeholder="Search products" style="max-width:280px">
+      <select class="form-select" id="catFilterAdmin" style="max-width:190px">
+        <option value="">All Categories</option>
+      </select>
+      <select class="form-select" id="statusFilterAdmin" style="max-width:170px">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="deleted">Hidden</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead>
+          <tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="productsTableBody">
+          <tr><td colspan="6" class="text-center"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="admin-panel" id="tab-orders">
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead>
+          <tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Method</th><th>Date</th><th>Status</th><th>Bill</th></tr>
+        </thead>
+        <tbody id="ordersTableBody">
+          <tr><td colspan="8" class="text-center"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="admin-panel" id="tab-users">
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Role</th><th>Orders</th></tr>
+        </thead>
+        <tbody id="usersTableBody">
+          <tr><td colspan="4" class="text-center"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="productFormModal">
+  <div class="modal modal-lg">
+    <button class="modal-close" id="closeProductForm">x</button>
+    <div class="modal-title" id="productFormTitle">Add Product</div>
+    <div id="productFormAlert"></div>
+    <input type="hidden" id="editProductId">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Product Name *</label>
+        <input type="text" class="form-input" id="pName" placeholder="Off-Shoulder Midi Dress">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Price (Rs.) *</label>
+        <input type="number" class="form-input" id="pPrice" placeholder="1299" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <input type="text" class="form-input" id="pCategory" placeholder="Dresses">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color</label>
+        <input type="text" class="form-input" id="pColor" placeholder="Black">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Material</label>
+        <input type="text" class="form-input" id="pMaterial" placeholder="Cotton">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Image URL</label>
+        <input type="url" class="form-input" id="pImageUrl" placeholder="https://example.com/image.jpg">
+        <div style="margin-top:10px">
+          <img id="imagePreview" src="" alt="" style="width:92px;height:112px;border-radius:8px;display:none;object-fit:cover;border:1px solid var(--line)">
+        </div>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Description</label>
+        <textarea class="form-input" id="pDesc" rows="3" placeholder="Describe the product"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sizes</label>
+        <input type="text" class="form-input" id="pSizes" placeholder="XS, S, M, L, XL" value="XS, S, M, L, XL">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Discount %</label>
+        <input type="number" class="form-input" id="pDiscount" placeholder="0" min="0" max="90">
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:8px">
+      <button class="btn btn-outline" id="cancelProductForm">Cancel</button>
+      <button class="btn btn-primary" id="saveProductBtn">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:390px;text-align:center">
+    <div class="modal-title">Hide Product?</div>
+    <p style="color:var(--muted);margin-bottom:20px">The product will be removed from the shop but kept for order history.</p>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button class="btn btn-outline" id="cancelDelete">Cancel</button>
+      <button class="btn btn-danger" id="confirmDelete">Hide Product</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="adminBillModal">
+  <div class="modal">
+    <button class="modal-close" id="closeAdminBill">x</button>
+    <div id="adminBillContent"></div>
+    <div style="text-align:center;margin-top:16px">
+      <button class="btn btn-outline btn-sm" onclick="window.print()">Print</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+let allProducts = [];
+let allOrders = [];
+let allUsers = [];
+let deleteTargetId = null;
+
+const formatPrice = value => "Rs. " + Number(value || 0).toLocaleString("en-IN");
+const safe = value => String(value ?? "");
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  if (!isAdmin(user.email)) {
+    window.location.href = "shop.html";
+    return;
+  }
+
+  currentUser = user;
+  document.getElementById("userEmail").textContent = user.email;
+  await Promise.all([loadProducts(), loadOrders(), loadUsers()]);
+  loadStats();
+  document.getElementById("loadingOverlay").style.display = "none";
+});
+
+document.querySelectorAll(".admin-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".admin-tab").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll("main > .admin-panel").forEach(panel => panel.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+  });
+});
+
+async function loadProducts() {
+  try {
+    const snap = await db.collection("products").orderBy("createdAt", "desc").get();
+    const cats = new Set();
+    allProducts = [];
+
+    snap.forEach(doc => {
+      const product = { id: doc.id, status: "active", ...doc.data() };
+      allProducts.push(product);
+      if (product.category) cats.add(product.category);
+    });
+
+    document.getElementById("catFilterAdmin").innerHTML = '<option value="">All Categories</option>' + Array.from(cats).sort().map(cat => `<option value="${safe(cat)}">${safe(cat)}</option>`).join("");
+    renderProductsTable();
+  } catch (err) {
+    console.error(err);
+    document.getElementById("productsTableBody").innerHTML = '<tr><td colspan="6" class="text-center">Failed to load products.</td></tr>';
+  }
+}
+
+function renderProductsTable() {
+  const search = document.getElementById("productSearch").value.toLowerCase();
+  const cat = document.getElementById("catFilterAdmin").value;
+  const status = document.getElementById("statusFilterAdmin").value;
+  const list = allProducts.filter(product => {
+    const matchSearch = !search || safe(product.name).toLowerCase().includes(search);
+    const matchCat = !cat || product.category === cat;
+    const matchStatus = !status || product.status === status;
+    return matchSearch && matchCat && matchStatus;
+  });
+
+  const tbody = document.getElementById("productsTableBody");
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding:32px;color:var(--muted)">No products found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(product => `
+    <tr>
+      <td>${product.imageUrl ? `<img class="admin-thumb" src="${product.imageUrl}" alt="${safe(product.name)}">` : '<div class="admin-thumb" style="display:flex;align-items:center;justify-content:center;font-weight:800">TC</div>'}</td>
+      <td><strong>${safe(product.name)}</strong></td>
+      <td>${safe(product.category || "-")}</td>
+      <td>${formatPrice(product.price)}</td>
+      <td><span class="badge badge-${product.status === "active" ? "active" : "deleted"}">${product.status === "active" ? "Active" : "Hidden"}</span></td>
+      <td>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="editProduct('${product.id}')">Edit</button>
+          ${product.status === "active" ? `<button class="btn btn-danger btn-sm" onclick="softDelete('${product.id}')">Hide</button>` : `<button class="btn btn-primary btn-sm" onclick="restoreProduct('${product.id}')">Restore</button>`}
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function loadOrders() {
+  try {
+    const snap = await db.collection("orders").orderBy("createdAt", "desc").get();
+    allOrders = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderOrdersTable();
+  } catch (err) {
+    console.error(err);
+    document.getElementById("ordersTableBody").innerHTML = '<tr><td colspan="8" class="text-center">Failed to load orders.</td></tr>';
+  }
+}
+
+function renderOrdersTable() {
+  const tbody = document.getElementById("ordersTableBody");
+  if (!allOrders.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding:32px;color:var(--muted)">No orders yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = allOrders.map(order => {
+    const date = order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+    const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+    return `
+      <tr>
+        <td><code>${safe(order.orderId || order.id)}</code></td>
+        <td>${safe(order.shipping?.name || order.userEmail)}<br><small style="color:var(--muted)">${safe(order.userEmail)}</small></td>
+        <td>${itemCount}</td>
+        <td>${formatPrice(order.total)}</td>
+        <td>${safe(order.payment?.method || "-")}</td>
+        <td>${date}</td>
+        <td><span class="badge badge-paid">${safe(order.status || "paid")}</span></td>
+        <td><button class="btn btn-outline btn-sm" onclick="showAdminBill('${order.id}')">View</button></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+async function loadUsers() {
+  try {
+    const snap = await db.collection("users").get();
+    allUsers = snap.docs.map(doc => doc.data());
+    renderUsersTable();
+  } catch (err) {
+    console.error(err);
+    document.getElementById("usersTableBody").innerHTML = '<tr><td colspan="4" class="text-center">Failed to load users.</td></tr>';
+  }
+}
+
+function renderUsersTable() {
+  const tbody = document.getElementById("usersTableBody");
+  if (!allUsers.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center" style="padding:32px;color:var(--muted)">No users found.</td></tr>';
+    return;
+  }
+
+  const orderCounts = {};
+  allOrders.forEach(order => orderCounts[order.userId] = (orderCounts[order.userId] || 0) + 1);
+  tbody.innerHTML = allUsers.map(user => `
+    <tr>
+      <td>${safe(user.displayName || "-")}</td>
+      <td>${safe(user.email)}</td>
+      <td><span class="badge ${user.role === "admin" ? "badge-pending" : "badge-active"}">${safe(user.role || "user")}</span></td>
+      <td>${orderCounts[user.uid] || 0}</td>
+    </tr>
+  `).join("");
+}
+
+function loadStats() {
+  const active = allProducts.filter(product => product.status === "active").length;
+  const revenue = allOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  document.getElementById("statProducts").textContent = active;
+  document.getElementById("statOrders").textContent = allOrders.length;
+  document.getElementById("statRevenue").textContent = formatPrice(revenue);
+  document.getElementById("statUsers").textContent = allUsers.length;
+}
+
+document.getElementById("addProductBtn").addEventListener("click", () => openProductForm(null));
+
+function openProductForm(productId) {
+  const product = allProducts.find(item => item.id === productId);
+  document.getElementById("productFormTitle").textContent = product ? "Edit Product" : "Add Product";
+  document.getElementById("editProductId").value = productId || "";
+  document.getElementById("productFormAlert").innerHTML = "";
+
+  document.getElementById("pName").value = product?.name || "";
+  document.getElementById("pPrice").value = product?.price || "";
+  document.getElementById("pCategory").value = product?.category || "";
+  document.getElementById("pColor").value = product?.color || "";
+  document.getElementById("pMaterial").value = product?.material || "";
+  document.getElementById("pImageUrl").value = product?.imageUrl || "";
+  document.getElementById("pDesc").value = product?.description || "";
+  document.getElementById("pSizes").value = (product?.sizes || ["XS", "S", "M", "L", "XL"]).join(", ");
+  document.getElementById("pDiscount").value = product?.discount || 0;
+  updateImagePreview(product?.imageUrl || "");
+  document.getElementById("productFormModal").classList.add("open");
+}
+
+document.getElementById("pImageUrl").addEventListener("input", event => updateImagePreview(event.target.value));
+
+function updateImagePreview(url) {
+  const img = document.getElementById("imagePreview");
+  img.src = url || "";
+  img.style.display = url ? "block" : "none";
+  img.onerror = () => img.style.display = "none";
+}
+
+function closeProductForm() {
+  document.getElementById("productFormModal").classList.remove("open");
+}
+
+document.getElementById("closeProductForm").addEventListener("click", closeProductForm);
+document.getElementById("cancelProductForm").addEventListener("click", closeProductForm);
+
+document.getElementById("saveProductBtn").addEventListener("click", async () => {
+  const name = document.getElementById("pName").value.trim();
+  const price = Number(document.getElementById("pPrice").value);
+  const category = document.getElementById("pCategory").value.trim();
+  const editId = document.getElementById("editProductId").value;
+
+  if (!name || !price || !category) {
+    document.getElementById("productFormAlert").innerHTML = '<div class="alert alert-error">Name, price, and category are required.</div>';
+    return;
+  }
+
+  const btn = document.getElementById("saveProductBtn");
+  btn.textContent = "Saving...";
+  btn.disabled = true;
+
+  try {
+    const data = {
+      name,
+      price,
+      category,
+      color: document.getElementById("pColor").value.trim(),
+      material: document.getElementById("pMaterial").value.trim(),
+      imageUrl: document.getElementById("pImageUrl").value.trim(),
+      description: document.getElementById("pDesc").value.trim(),
+      sizes: document.getElementById("pSizes").value.split(",").map(size => size.trim()).filter(Boolean),
+      discount: Number(document.getElementById("pDiscount").value || 0),
+      status: "active",
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (editId) {
+      await db.collection("products").doc(editId).update(data);
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("products").add(data);
+    }
+
+    closeProductForm();
+    await loadProducts();
+    loadStats();
+  } catch (err) {
+    document.getElementById("productFormAlert").innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+  } finally {
+    btn.textContent = "Save Product";
+    btn.disabled = false;
+  }
+});
+
+function editProduct(id) {
+  openProductForm(id);
+}
+
+function softDelete(id) {
+  deleteTargetId = id;
+  document.getElementById("deleteModal").classList.add("open");
+}
+
+document.getElementById("cancelDelete").addEventListener("click", () => {
+  document.getElementById("deleteModal").classList.remove("open");
+  deleteTargetId = null;
+});
+
+document.getElementById("confirmDelete").addEventListener("click", async () => {
+  if (!deleteTargetId) return;
+  await db.collection("products").doc(deleteTargetId).update({
+    status: "deleted",
+    deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    deletedBy: currentUser.email
+  });
+  document.getElementById("deleteModal").classList.remove("open");
+  deleteTargetId = null;
+  await loadProducts();
+  loadStats();
+});
+
+async function restoreProduct(id) {
+  await db.collection("products").doc(id).update({
+    status: "active",
+    deletedAt: firebase.firestore.FieldValue.deleteField(),
+    deletedBy: firebase.firestore.FieldValue.deleteField()
+  });
+  await loadProducts();
+  loadStats();
+}
+
+document.getElementById("productSearch").addEventListener("input", renderProductsTable);
+document.getElementById("catFilterAdmin").addEventListener("change", renderProductsTable);
+document.getElementById("statusFilterAdmin").addEventListener("change", renderProductsTable);
+
+function showAdminBill(orderId) {
+  const order = allOrders.find(item => item.id === orderId);
+  if (!order) return;
+
+  const date = order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-";
+  const items = Array.isArray(order.items) ? order.items : [];
+
+  document.getElementById("adminBillContent").innerHTML = `
+    <div class="receipt">
+      <div class="receipt-logo">Street<span>Aura</span></div>
+      <div class="receipt-meta">Chennai - 600001</div>
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span><strong>Order ID</strong></span><span>${safe(order.orderId || order.id)}</span></div>
+      <div class="receipt-row"><span><strong>Date</strong></span><span>${date}</span></div>
+      <div class="receipt-row"><span><strong>Customer</strong></span><span>${safe(order.shipping?.name || "-")}</span></div>
+      <div class="receipt-row"><span><strong>Email</strong></span><span>${safe(order.userEmail)}</span></div>
+      <hr class="receipt-divider">
+      ${items.map(item => `<div class="receipt-row"><span>${safe(item.name)}${item.size ? " (" + safe(item.size) + ")" : ""} x ${item.qty}</span><span>${formatPrice(Number(item.price || 0) * Number(item.qty || 0))}</span></div>`).join("")}
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span>Subtotal</span><span>${formatPrice(order.subtotal)}</span></div>
+      <div class="receipt-row"><span>Delivery</span><span>${Number(order.delivery || 0) === 0 ? "Free" : formatPrice(order.delivery)}</span></div>
+      <div class="receipt-total-row"><span>Total</span><span>${formatPrice(order.total)}</span></div>
+      <hr class="receipt-divider">
+      <div class="receipt-row"><span>Payment</span><span>${safe(order.payment?.detail || "-")}</span></div>
+      <div class="receipt-row"><span>Transaction ID</span><span>${safe(order.payment?.transactionId || "-")}</span></div>
+      <div class="receipt-row"><span>Status</span><span style="color:var(--success);font-weight:800">${safe(order.status || "paid")}</span></div>
+      <div class="receipt-footer">StreetAura Admin Copy</div>
+    </div>
+  `;
+  document.getElementById("adminBillModal").classList.add("open");
+}
+
+document.getElementById("closeAdminBill").addEventListener("click", () => document.getElementById("adminBillModal").classList.remove("open"));
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  await auth.signOut();
+  window.location.href = "login.html";
+});
+</script>
+</body>
+</html>
